@@ -1,0 +1,51 @@
+---
+title: "speaq_workflow"
+author: "Patrick Jiang"
+date: "2024-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+getwd()
+setwd("/Users/patrickjiang/")
+library(ASICS)
+library(ASICSdata)
+library(speaq)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## load Data
+```{r}
+path = "/Users/patrickjiang/NMR Spectral work/IPSCDATA_HON/Extracellular/DDvsSD"
+snd = importSpectra(path, type.import = "fid",subdirs = TRUE, dirs.names = TRUE, normalisation = FALSE, baseline.correction = TRUE)
+```
+
+```{r}
+snd.spectra = as.matrix(snd)
+snd.ppm = seq(from = 6, to = 0.5, length.out = 36)
+snd.names = as.factor(names(snd))
+
+
+speaq::drawSpecPPM(Y.spec = snd.spectra,
+                   X.ppm = snd.ppm,
+                   title = 'Spontaneous and Directed spectra')
+                   #groupFactor = snd.names,
+                   #legend.extra.x = 1,
+                   #legend.extra.y = 1.1)
+```
+
+```{r}
+snd.peaks = speaq::getWaveletPeaks(Y.spec = snd.spectra,
+                   X.ppm = snd.ppm,
+                   baselineThresh = 10,
+                   SNR.Th = -1,
+                   nCPU = 2,
+                   include_nearbyPeaks = TRUE)
+
+snd.grouped <- speaq::PeakGrouper(Y.peaks = snd.peaks,  
+                                   min.samp.grp = 5, 
+                                   grouping.window.width = 200)
+```
+
+
+

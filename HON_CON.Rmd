@@ -1,0 +1,171 @@
+---
+title: "iPSC Study"
+author: "Patrick Jiang"
+date: "2024-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+getwd()
+setwd("/Users/patrickjiang/")
+library(ASICS)
+library(ASICSdata)
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Background
+```{r}
+
+```
+
+
+## Packages being used
+```{r}
+
+```
+
+
+## Importing the data
+```{r, echo = TRUE}
+extracellular_path <- "/Users/patrickjiang/NMR Spectral work/IPSCDATA_HON/Extracellular/"
+dir(extracellular_path)
+#intracellular_path <- "/Users/patrickjiang/NMR Spectral work/IPSCDATA_HON/Intracellular/"
+#dir(intracellular_path)
+```
+
+```{r, include=FALSE, echo = TRUE}
+extra_list = list()
+idx = 1;
+for(i in dir(extracellular_path)){
+  npath = paste(extracellular_path, i, sep = "")
+  temp = importSpectra(npath, type.import = "1r",
+                       subdirs = TRUE, dirs.names = TRUE, type.norm = "pqn")
+  temp2 = createSpectra(temp)
+  extra_list[[idx]] = temp2
+  idx = idx + 1
+}
+
+# intra_list = list()
+# idx = 1;
+# for(i in dir(intracellular_path)){
+#   npath = paste(intracellular_path, i, sep = "")
+#   temp = importSpectra(npath, type.import = "1r",
+#                        subdirs = TRUE, dirs.names = TRUE, type.norm = "pqn")
+#   temp2 = createSpectra(temp)
+#   intra_list[[idx]] = temp2
+#   idx = idx + 1
+# }
+
+```
+
+
+
+## Plots
+
+```{r, echo = FALSE}
+plot(extra_list[[1]])
+plot(extra_list[[2]])
+plot(extra_list[[3]])
+plot(extra_list[[4]])
+
+# plot(intra_list[[1]])
+# plot(intra_list[[2]])
+# plot(intra_list[[3]])
+```
+
+## Perform Quantification
+```{r}
+iter = c(1,3,4)
+eres_list = list()
+for(i in iter){
+  eres_list[[i]] = ASICS(extra_list[[i]],verbose = T)
+}
+
+#iter = 1:3
+#ires_list = list()
+#for(i in iter){
+#  ires_list[[i]] = ASICS(intra_list[[i]],verbose = T)
+#}
+
+```
+
+
+
+## Plot Quantification Results
+```{r}
+plot(eres_list[[1]])
+plot(eres_list[[3]])
+plot(eres_list[[4]])
+
+
+
+#plot(ires_list[[1]])
+#plot(ires_list[[2]])
+#plot(ires_list[[3]])
+```
+
+## Generate Interpretable Data
+```{r}
+edf = list()
+iter = c(1,3,4)
+for(i in iter){
+  edf[[i]] = getQuantification(eres_list[[i]])
+}
+
+```
+
+
+## Plot Interpretation
+```{r}
+eColsDD= names(edf[[1]])
+eColsSD = names(edf[[3]])
+eColsUD = names(edf[[4]])
+evalsDD = c(rep(c("Directed Differentiation", "Control"),3))
+evalsSD = c(rep(c("Spontaneous Differentiation", "Control"),3))
+evalsUD = c("Undifferentiated", "Control")
+
+testDD = data.frame(sample_names = eColsDD, condition = evalsDD)
+testDD$condition <- factor(testDD$condition)
+eAnalyzeDD <- formatForAnalysis(edf[[1]], zero.threshold = 10, design = testDD)
+#EresPCA <- pca(eAnalyzeDD, type.data = "quantification")
+EresOPLSDA <- oplsda(eAnalyzeDD, crossvalI = 3, condition = "condition", orthoI = 1)
+plot(EresOPLSDA, graph = "ind")
+
+```
+## Plot (cont.)
+```{r}
+testSD = data.frame(sample_names = eColsSD, condition = evalsSD)
+testSD$condition <- factor(testSD$condition)
+eAnalyzeSD <- formatForAnalysis(edf[[3]], zero.threshold = 10, design = testSD)
+#EresPCA <- pca(eAnalyzeSD, type.data = "quantification")
+EresOPLSDA <- oplsda(eAnalyzeSD, crossvalI = 3, condition = "condition", orthoI = 1)
+plot(EresOPLSDA, graph = "ind")
+```
+
+## Plot(cont.)
+```{r}
+testUD = data.frame(sample_names = eColsUD, condition = evalsUD)
+testUD$condition <- factor(testUD$condition)
+eAnalyzeUD <- formatForAnalysis(edf[[4]], zero.threshold = 10, design = testUD)
+#EresPCA <- pca(eAnalyzeSD, type.data = "quantification")
+EresOPLSDA <- oplsda(eAnalyzeUD, crossvalI = 1, condition = "condition", orthoI = 1)
+plot(EresOPLSDA, graph = "ind")
+```
+## Try to test SD and DD
+```{r}
+SvsD = ASICS(extra_list[[2]],verbose = T)
+plot(SvsD)
+df = getQuantification(SvsD)
+df = df[,-7]
+
+cols = names(df)
+eval = c(rep("Directed Differentiation", 3), rep("Spontaneous Differentiation", 3))
+
+test = data.frame(sample_names = cols, condition = eval)
+test$condition <- factor(test$condition)
+
+analysis <- formatForAnalysis(df, zero.threshold = 10, design = test)
+result <- oplsda(analysis, crossvalI = 3, condition = "condition",orthoI = 1)
+plot(result, graph = "ind")
+```
+
