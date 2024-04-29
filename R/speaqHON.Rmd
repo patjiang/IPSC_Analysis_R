@@ -1,0 +1,411 @@
+---
+title: "speaq_workflow"
+author: "Patrick Jiang"
+date: "2024-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+getwd()
+setwd("/Users/patrickjiang/")
+library(ASICS)
+library(ASICSdata)
+library(speaq)
+library(ggpubr)
+library(ggplot2)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## load Data
+```{r}
+path = "/Users/patrickjiang/NMR Spectral work/IPSCDATA_HON/Extracellular/DD"
+dd = importSpectra(path, type.import = "fid",subdirs = TRUE, dirs.names = TRUE, normalisation = FALSE, baseline.correction = TRUE)
+dd = createSpectra(dd)
+
+path = "/Users/patrickjiang/NMR Spectral work/IPSCDATA_HON/Extracellular/SD"
+sd = importSpectra(path, type.import = "fid",subdirs = TRUE, dirs.names = TRUE, normalisation = FALSE, baseline.correction = TRUE)
+sd = createSpectra(sd)
+```
+
+
+```{r}
+
+names = c()
+spectra = c()
+iter = 1:27
+for(i in iter){
+  onesamp = dd[i]
+  names = c(names, onesamp@sample.name)
+  spectra = c(spectra, list(onesamp@spectra@x))
+}
+
+dd_df = as.data.frame(spectra)
+colnames(dd_df) = names
+```
+
+
+
+```{r}
+dd.spectra = as.matrix(dd_df)
+dd.ppm = dd@ppm.grid
+#dd.names = as.factor(names(dd))
+
+
+speaq::drawSpecPPM(Y.spec = t(dd.spectra),
+                   X.ppm = dd.ppm,
+                   title = 'Directed spectra')
+                   #groupFactor = snd.names,
+                   #legend.extra.x = 1,
+                   #legend.extra.y = 1.1)
+```
+
+```{r}
+names = c()
+spectra = c()
+iter = 1:20
+for(i in iter){
+  onesamp = sd[i]
+  names = c(names, onesamp@sample.name)
+  spectra = c(spectra, list(onesamp@spectra@x))
+}
+
+sd_df = as.data.frame(spectra)
+colnames(sd_df) = names
+
+
+sd.spectra = as.matrix(sd_df)
+sd.ppm = sd@ppm.grid
+#dd.names = as.factor(names(dd))
+
+
+speaq::drawSpecPPM(Y.spec = t(sd.spectra),
+                   X.ppm = sd.ppm,
+                   title = 'Spontaneous spectra')
+                   #groupFactor = snd.names,
+                   #legend.extra.x = 1,
+                   #legend.extra.y = 1.1)
+```
+
+
+```{r}
+dd.peaks = speaq::getWaveletPeaks(Y.spec = t(dd.spectra),
+                   X.ppm = dd.ppm,
+                   SNR.Th = -1,
+                   nCPU = -1,
+                   include_nearbyPeaks = TRUE)
+dd.grouped <- speaq::PeakGrouper(Y.peaks = dd.peaks,  
+                                   min.samp.grp = 5, 
+                                   maxClust = 20,
+                                   grouping.window.width = 200)
+```
+
+
+```{r}
+sd.peaks = speaq::getWaveletPeaks(Y.spec = t(sd.spectra),
+                   X.ppm = sd.ppm,
+                   SNR.Th = -1,
+                   nCPU = -1,
+                   include_nearbyPeaks = TRUE)
+sd.grouped <- speaq::PeakGrouper(Y.peaks = sd.peaks,  
+                                   min.samp.grp = 5, 
+                                   maxClust = 20,
+                                   grouping.window.width = 200)
+```
+
+```{r}
+ROI.ppm <- 3.0
+roiWidth.ppm <- 0.5
+
+speaq::ROIplot(Y.spec = t(dd.spectra), 
+               X.ppm = dd.ppm, 
+               ungrouped.peaks = dd.peaks,
+               grouped.peaks = dd.grouped, 
+               ROI.ppm = ROI.ppm,
+               roiWidth.ppm = roiWidth.ppm,)
+```
+```{r}
+ROI.ppm <- 3.0
+roiWidth.ppm <- 0.5
+
+speaq::ROIplot(Y.spec = t(sd.spectra), 
+               X.ppm = sd.ppm, 
+               ungrouped.peaks = sd.peaks,
+               grouped.peaks = sd.grouped, 
+               ROI.ppm = ROI.ppm,
+               roiWidth.ppm = roiWidth.ppm,)
+
+
+```
+
+```{r}
+dds = speaq:: SilhouetR(DataMatrix = dd.grouped$peakPPM,
+                                 GroupIndices = dd.grouped$peakIndex)
+sds = speaq:: SilhouetR(DataMatrix = sd.grouped$peakPPM,
+                                 GroupIndices = sd.grouped$peakIndex) 
+plot1 <- ggplot(dds, aes(SilhouetteValues)) + geom_freqpoly(binwidth = 0.03)
+plot2 <- ggplot(sds, aes(SilhouetteValues)) + geom_freqpoly(binwidth = 0.03)
+ggarrange(plot1, plot2, ncol = 1, nrow = 2)
+```
+
+
+```{r}
+dd.filled <- speaq::PeakFilling(Y.grouped = dd.grouped, 
+                                  Y.spec = t(dd.spectra),  
+                                  max.index.shift = 50,
+                                  nCPU = 1) # nCPU set to 1 for the vignette build
+
+dd.feats <- speaq::BuildFeatureMatrix(dd.filled)
+```
+
+```{r}
+sd.filled <- speaq::PeakFilling(Y.grouped = sd.grouped, 
+                                  Y.spec = t(sd.spectra),  
+                                  max.index.shift = 50,
+                                  nCPU = 1) # nCPU set to 1 for the vignette build
+
+sd.feats <- speaq::BuildFeatureMatrix(sd.filled)
+```
+
+```{r}
+dd.feats.scaled <- speaq::SCANT(data.matrix = dd.feats, 
+                                     type = c("pareto", "center"))  
+
+sd.feats.scaled <- speaq::SCANT(data.matrix = sd.feats, 
+                                     type = c("pareto", "center"))  
+
+```
+
+
+
+```{r}
+dd.pca = prcomp(dd.feats.scaled)
+sd.pca = prcomp(sd.feats.scaled)
+
+dd.loadings = dd.pca$rotation
+sd.loadings = sd.pca$rotation
+
+dd.scores = dd.pca$x
+sd.scores = sd.pca$x
+
+dd.varExplained = dd.pca$sdev^2
+sd.varExplained = sd.pca$sdev^2
+
+barplot(dd.varExplained/sum(dd.varExplained),
+        main = "Scree Plot",
+        ylab="Proportion of variance explained", 
+        xlab = "Principal comonent", 
+        names.arg = as.character(seq(1,length(dd.varExplained))))
+
+barplot(sd.varExplained/sum(sd.varExplained),
+        main = "Scree Plot",
+        ylab="Proportion of variance explained", 
+        xlab = "Principal comonent", 
+        names.arg = as.character(seq(1,length(sd.varExplained))))
+
+```
+
+```{r}
+plot(sd.scores[,1]/max(sd.scores[,1]), sd.scores[,2]/max(sd.scores[,2]),
+   main=paste("PCA, PC",1," vs. PC",2,sep=""),
+   xlab=paste("PC",1,round(sd.varExplained[1]/sum(sd.varExplained),digits=2),""),
+   ylab=paste("PC",2,round(sd.varExplained[2]/sum(sd.varExplained),digits=2),""))
+```
+
+
+```{r}
+tmp.filled = sd.filled
+
+tmp.filled$Sample = sd.filled$Sample + 6230
+
+tot.filled = rbind(dd.filled, sd.filled)
+
+tot.feats <- speaq::BuildFeatureMatrix(tot.filled)
+```
+
+
+```{r}
+path = "/Users/patrickjiang/NMR Spectral work/IPSCDATA_HON/Extracellular/DDvsSD"
+dvs = importSpectra(path, type.import = "fid",subdirs = TRUE, dirs.names = TRUE, normalisation = FALSE, baseline.correction = TRUE)
+dvs = createSpectra(dvs)
+```
+```{r}
+names = c()
+spectra = c()
+iter = 1:36
+for(i in iter){
+  onesamp = dvs[i]
+  names = c(names, onesamp@sample.name)
+  spectra = c(spectra, list(onesamp@spectra@x))
+}
+
+dvs_df = as.data.frame(spectra)
+colnames(dvs_df) = names
+```
+
+```{r}
+dvs.spectra = as.matrix(dvs_df)
+dvs.ppm = dvs@ppm.grid
+#dd.names = as.factor(names(dd))
+
+
+speaq::drawSpecPPM(Y.spec = t(dvs.spectra),
+                   X.ppm = dvs.ppm,
+                   title = 'Directed spectra')
+                   #groupFactor = snd.names,
+                   #legend.extra.x = 1,
+                   #legend.extra.y = 1.1)
+```
+
+
+```{r}
+dvs.peaks = speaq::getWaveletPeaks(Y.spec = t(dvs.spectra),
+                   X.ppm = dvs.ppm,
+                   SNR.Th = -1,
+                   nCPU = -1,
+                   include_nearbyPeaks = TRUE)
+dvs.grouped <- speaq::PeakGrouper(Y.peaks = dvs.peaks,  
+                                   min.samp.grp = 5, 
+                                   maxClust = 20,
+                                   grouping.window.width = 200)
+```
+
+```{r}
+ROI.ppm <- 5.0
+roiWidth.ppm <- 0.5
+
+speaq::ROIplot(Y.spec = t(dvs.spectra), 
+               X.ppm = dvs.ppm, 
+               ungrouped.peaks = dvs.peaks,
+               grouped.peaks = dvs.grouped, 
+               ROI.ppm = ROI.ppm,
+               roiWidth.ppm = roiWidth.ppm,)
+```
+
+```{r}
+dvsS = speaq:: SilhouetR(DataMatrix = dvs.grouped$peakPPM,
+                                 GroupIndices = dvs.grouped$peakIndex)
+
+plot = ggplot(dvsS, aes(SilhouetteValues)) + geom_freqpoly(binwidth = 0.03)
+plot
+```
+
+```{r}
+groups <- unique(dvsS$GroupIndices)
+Ngroups <- length(groups)
+sil_means <- matrix(NA, ncol = 3, nrow = Ngroups)
+
+for(k in 1:Ngroups){
+    sil_means[k,1] = groups[k]
+    sil_means[k,2] = mean(dvsS$SilhouetteValues[dvsS$GroupIndices==groups[k]])
+    sil_means[k,3] = mean(dvs.grouped$peakSNR[dvs.grouped$peakIndex==groups[k]])
+}
+
+sil_means <- sil_means[order(sil_means[,2]),]
+colnames(sil_means) <- c("groupIndex", "avg_silhouette_val", "avg. SNR")
+head(sil_means)
+```
+```{r}
+faulty = sil_means[1:50,1]
+
+eg = sil_means[order(sil_means[,3], decreasing = TRUE),]
+
+wrong.groups <- sort(sil_means[sil_means[,1]>=sil_means[1,1],1])[1:2]
+
+dvs.regr <- speaq::regroupR(grouped.peaks = dvs.grouped,
+                                  list.to.regroup = wrong.groups, 
+                                  min.samp.grp = 5,
+                                  max.dupli.prop = 0.1)
+
+dvsS = speaq:: SilhouetR(DataMatrix = dvs.regr$peakPPM,
+                                 GroupIndices = dvs.regr$peakIndex)
+
+plot = ggplot(dvsS, aes(SilhouetteValues)) + geom_freqpoly(binwidth = 0.03)
+plot
+
+```
+
+
+```{r}
+groups <- unique(dvsS$GroupIndices)
+Ngroups <- length(groups)
+sil_means <- matrix(NA, ncol = 3, nrow = Ngroups)
+
+for(k in 1:Ngroups){
+    sil_means[k,1] = groups[k]
+    sil_means[k,2] = mean(dvsS$SilhouetteValues[dvsS$GroupIndices==groups[k]])
+    sil_means[k,3] = mean(dvs.grouped$peakSNR[dvs.grouped$peakIndex==groups[k]])
+}
+
+sil_means <- sil_means[order(sil_means[,2]),]
+colnames(sil_means) <- c("groupIndex", "avg_silhouette_val", "avg. SNR")
+head(sil_means)
+```
+```{r}
+wrong.groups <- sort(sil_means[sil_means[,1]>=sil_means[1,1],1])[1:2]
+
+dvs.regr <- speaq::regroupR(grouped.peaks = dvs.regr,
+                                  list.to.regroup = wrong.groups, 
+                                  min.samp.grp = 5,
+                                  max.dupli.prop = 0.1)
+
+dvsS = speaq:: SilhouetR(DataMatrix = dvs.regr$peakPPM,
+                                 GroupIndices = dvs.regr$peakIndex)
+
+plot = ggplot(dvsS, aes(SilhouetteValues)) + geom_freqpoly(binwidth = 0.03)
+plot
+```
+
+```{r}
+dvs.filled <- speaq::PeakFilling(Y.grouped = dvs.regr, 
+                                  Y.spec = t(dvs.spectra),  
+                                  max.index.shift = 50,
+                                  nCPU = 1) # nCPU set to 1 for the vignette build
+
+dvs.feats <- speaq::BuildFeatureMatrix(dvs.filled)
+
+
+dvs.scaled <- speaq::SCANT(data.matrix = dvs.feats, 
+                                     type = c("pareto", "center"))  
+
+common.pca <- prcomp(dvs.scaled) 
+
+
+loadings <- common.pca$rotation
+scores <- common.pca$x
+varExplained <- common.pca$sdev^2
+
+barplot(varExplained/sum(varExplained), 
+        main="Scree Plot",ylab="Proportion of variance explained", 
+        xlab = "Principal comonent", 
+        names.arg = as.character(seq(1,length(varExplained))))
+
+```
+```{r}
+lbls = c(rep("Directed Differentiation(1)", 6),rep("Directed Differentiation(2)", 6),rep("Directed Differentiation(3)", 6),rep("Spontaneous Differentiation(1)", 6),rep("Spontaneous Differentiation(2)", 3),rep("Spontaneous Differentiation(3)", 3), rep("Undifferentiated", 6))
+
+plot.marks <- as.numeric(as.factor(lbls))
+plot.marks[plot.marks = 1] = 8
+plot.marks[plot.marks = 2] = 8
+plot.marks[plot.marks = 3] = 8
+plot.marks[plot.marks = 4] = 15
+plot.marks[plot.marks = 5] = 15
+plot.marks[plot.marks = 6] = 15
+plot.marks[plot.marks = 7] = 1
+
+cp1 <- 1
+cp2 <- 2 
+plot(scores[,cp1]/max(scores[,cp1]), scores[,cp2]/max(scores[,cp2]),
+     main=paste("score plot, PC",cp1," vs. PC",cp2,sep=""),
+     xlab=paste("PC",cp1,round(varExplained[cp1]/sum(varExplained),digits=2),""),
+     ylab=paste("PC",cp2,round(varExplained[cp2]/sum(varExplained),digits=2),""),
+     pch = plot.marks)
+text(scores[,cp1]/max(scores[,cp1]),scores[,cp2]/max(scores[,cp2]), lbls, cex=0.5, pos=4, col="red")
+lines(x = c(-100,100), y = c(0,0))
+lines(x = c(0,0), y = c(-100,100))
+legend("topleft", 
+       legend = c("DD  ","SD  ","UD      "), 
+       pch = c(8,15,1), 
+       y.intersp = 1.9)
+
+```
+
